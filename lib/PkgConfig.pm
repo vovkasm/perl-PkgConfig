@@ -30,6 +30,7 @@ use File::Glob 'bsd_glob';
 use Class::Struct; #in core since 5.004
 use Data::Dumper;
 use File::Basename qw( dirname );
+use Text::ParseWords qw( shellwords );
 
 our $UseDebugging;
 
@@ -367,7 +368,7 @@ sub assign_var {
         log_debug("Prefix already defined by user");
         return;
     }
-    my $evalstr = sprintf('$%s = %s',
+    my $evalstr = sprintf('$%s = join \' \', map { $_ =~ s/(\\s)/\\\\$1/g; $_ } shellwords(%s)',
                     $self->_get_pc_varname($field), $value);
     
     log_debug("EVAL", $evalstr);
@@ -577,7 +578,7 @@ sub parse_line {
     #remove quoutes from field names
     $field =~ s/['"]//g;
     
-
+    $value =~ s/\\/\\\\/g;;
     # pkg-config escapes a '$' with a '$$'. This won't go in perl:
     $value =~ s/[^\\]\$\$/\\\$/g;
     $value =~ s/([@%&])/\$1/g;
@@ -589,13 +590,13 @@ sub parse_line {
     
     $value =~ s/\$\{/\$\{$varclass\::/g;
     
-    #quoute the value string, unless quouted already
-    $value = "\"$value\"" unless $value =~ /^["']/;
+    ##quoute the value string, unless quouted already
+    #$value = "\"$value\"" unless $value =~ /^["']/;
     
     #get existent variables from our hash:
     
-    
-    $value =~ s/'/"/g; #allow for interpolation
+    $value =~ s/['"]/\\"/g; #allow for interpolation
+    $value = "\"$value\"";
     
     $self->assign_var($field, $value);
     
@@ -629,7 +630,6 @@ sub parse_pcfile {
     #now that we have eval strings, evaluate them all within the same
     #lexical scope:
     
-
     $self->append_cflags(  $self->_pc_var('cflags') );
     $self->append_ldflags( $self->_pc_var('libs') );
     if($self->static) {
@@ -766,7 +766,7 @@ sub _split_flags {
     if(@flags == 1) {
         my $str = shift @flags;
         return () if !$str;
-        @flags = split(/\s+/, $str);
+        @flags = map { s/\\(.)/$1/g; $_ } split(/(?<!\\)\s+/, $str);
     }
     @flags = grep $_, @flags;
     return @flags;
